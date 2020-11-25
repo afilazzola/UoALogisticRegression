@@ -69,6 +69,8 @@ To best understand how a GLM is executed, it is a good idea to go through an exa
 This is an example of a logistic regression that is a member of the GLM family fit to a binomial distribution. The response variable here is not normal because the outcome of an individual can only be two values: 1 = cured or 0 = not cured. 
 
 ```{r}
+drug.trial <- read.csv("data//drug.trial.csv")
+
 ##load data
 head(drug.trial)
 
@@ -92,6 +94,38 @@ anova(m2, test="Chisq") ## chisq test on predictor from model
 ```
 
 Here we see that degrees freedom from the model (i.e. n-1), the residual deviance and DF again from the model output. The p-value here identifies that the effect is significant. R for some reason refers to the Chi-sq value from this test as "deviance". Judging by the high Chi-sq value, we can believe that the effect of this predictor is significant. We now must determine which drug treatment is most effective. 
+
+Let's try another example with a continuous variable such as the effects of winter air temperature on lake ice
+
+```{r}
+## Create some data
+iceData <- data.frame(icefree = c(0,0,0,0,1,0,1,1,1,1), temperature = c(-10,-7.5,-8.6,-5.2,-5,-2.3,0.5,0,1.1,3.7))
+
+m3<- glm(icefree~temperature,  family="binomial", data=iceData) 
+summary(m3)
+anova(m3, test="Chisq")
+
+library(ggplot2)
+## Plot the logistic regression
+ggplot(iceData, aes(x= temperature, y=icefree)) + geom_point() + geom_smooth(method="glm", method.args=list(family="binomial"), se=F)
+
+## Plot your own range of values
+m3Out <- data.frame(temperature = -10:4)
+m3Out[,"icefree"] <- predict(m3, m3Out, type="response")
+
+ggplot(m3Out, aes(x=temperature, y=icefree)) + geom_line() + geom_point(data=iceData, aes(x= temperature, y=icefree))
+
+## Plot the log odds model
+m3Out[,"logOdds"] <- predict(m3, m3Out, type="link")
+
+ggplot(m3Out, aes(x=temperature, y=logOdds)) + geom_line() 
+
+
+## Psuedo R2
+m3null<- glm(icefree~1,  family="binomial", data=iceData) ##glm for drugs potential to curse
+1-logLik(m3)/logLik(m3null) 
+
+```
 
 ### 2.2 Pairwise comparisons and packages
 
