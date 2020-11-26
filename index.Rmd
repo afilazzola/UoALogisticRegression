@@ -62,7 +62,7 @@ This last assumption has some associated complexities that could be read more on
 
 `E(log(Y)) ≠ log(E(Y))`
 
-### Working example of a GLM
+### Logistic regression - a form of GLM
 
 To best understand how a GLM is executed, it is a good idea to go through an example. As said above, at the most basic, a GLM compares a response to one or more predictors. Let us consider a population of people that have a disease. Three drugs are being considered as potentially curing this disease. Eighty people are randomly divided into four groups, three for each drug treatment and one as a control. We would like to see if a drug was effective. 
 
@@ -127,9 +127,36 @@ m3null<- glm(icefree~1,  family="binomial", data=iceData) ##glm for drugs potent
 
 ```
 
-### 2.2 Pairwise comparisons and packages
+### Examine model sensitivity and specificity
+```{r warning=FALSE, message=FALSE}
+library(caret)
+library(pROC)
 
-To see which drug is most effective, we need to conduct pairwise comparisons. There are many packages that are available in R to do this. One of the easier ones to work with is `lsmeans`. 
+## List actual vs predicted
+actualData <- iceData$icefree
+predictData <- predict( m3, iceData, type="response")
+
+## set threshold
+predictData <- ifelse(predictData > 0.5, 1, 0)
+
+## Create confusion matrix
+confusionMat <- table(actualData, predictData)
+confusionMat
+
+## Extract outputs
+confusionMatrix(confusionMat)
+
+## Create ROC graph
+m3ROC <-  roc(icefree~temperature, data = iceData)
+plot(m3ROC)
+
+m3ROC ## get AUC
+```
+
+
+### Pairwise comparisons and packages
+
+To see which drug is most effective, we need to conduct pairwise comparisons. There are many packages that are available in R to do this. One of the easier ones to work with is `emmeans`. 
 
 ```{r}
 library(emmeans)
@@ -138,12 +165,12 @@ library(emmeans)
 The syntax for conducting a pairwise comparison is model, type of comparison (in this case pairwise), and lastly adjustment type. Tukey is a common technique that is also used for ANOVAs. 
 
 ```{r}
-emmeans(m2, pairwise~predictor, adjust="tukey") ##conduct pairwise comparisons on predictor
+# emmeans(m3, pairwise~predictor, adjust="tukey") ##conduct pairwise comparisons on predictor
 ```
 
 The output of this function provides a lot of information including the model statistics for each of the groups. However, the most relative content now to our question is the p.value to determine which groups were different from one another and the estimate to see in what direction. Here, we can see that the only group that is significantly different is drug3. This drug was more effective than a control and drug1, although it had a similar cure rate as drug2. This is a typical workflow for a GLM that begins by testing the effect of the predictor and is followed by a pairwise comparison to determine where the significance can be attributed to. 
 
-### 2.3 Different types of GLMs
+###  Different types of GLMs
 
 There are many different types of GLMs that are possible in addition to the `binomial` family. Some of them involve changing the family in the glm function to the most appropriate data distribution. Other commons families include:
 
@@ -158,119 +185,3 @@ quasipoisson    | discrete count data that is overdispersed.
 Quasibinomial and quasipoisson compensate for overdispersed data with an extra parameter `ϕ`. Theta here is a dispersion parameter that attempts to describe additional variance that cannot be explained by the distribution alone. As a general rule of thumb follow this workflow.
 
 ![](GLM.workflow.jpg)
-
-### 2.4 Try it yourself
-
-Here is an example of bird surveys in Southern Ontario in forests, urban parks, and city centers. Determine if there is a difference between the habitats and which was the greatest. 
-
-```{r}
-head(bird.data)
-```
-
-
-### 2.5 Generalized Linear Mixed Model
-
-A Generalized Linear Mixed Model (GLMM) is a type of GLM that includes a random effect. Random effects are variables that are included in the model to account for common variance among your replicates. Let's consider a regular linear regression, where you have different levels of animal grazing. Here, the number of cattle per hectare is a fixed effect and is represented by the x-axis (predictor variable). The response variable is amount of surveyed biomass. 
-
-```{r}
-## Make up some data
-head(ranch)
-
-plot(ranch$cattle, ranch$biomass, ylab="Biomass (kg/m)", xlab="Cattle (per ha)", pch=19)
-
-```
-
-We can see the relationship is linear, but these samples are not independent from each other, which violates an assumption of linear regression. These samples were collected over four different years 2014 - 2017. If you were interested in examining year effects on grazing you could include year as a fixed effect and have an interaction term `grazing * year` to satisfy that assumption. However, what if the assumption is that the differences among years effect everything equally. That is to say, different years can have different biomass values at the sites because of grow conditions, but cattle at their respective densities, will always eat a consistent amount. In this case, you fit year as a random effect because you are not interested in year effects, but are still accounting the associated variation. Another way to consider it, is a random effect is something that should effect the y-intercept of your linear model and a fixed effect is something that would effect the slope. Although there are random effects that consider slope as well (see [here](http://www.bristol.ac.uk/cmm/learning/videos/random-slopes.html)), this will cover most instances.
-
-**NB** One thing important to note is that random vs. fixed effects are determined by your research question. If your question was "What are the effects of inter-annual variability on grazing?" you must treat year as a fixed effect. 
-
-To conduct a mixed model requires the package `lme4` and the random factor is fitted using the operator `(1 | randomeff)`
-
-```{r, warning=FALSE, message=FALSE}
-library(lme4)
-
-m1 <- lmer(biomass ~ cattle + (1|year), data=ranch)
-summary(m1)
-```
-
-But wait?! There are no p.values? There is a fairly long, but [humourous explanation](https://stat.ethz.ch/pipermail/r-help/2006-May/094765.html) by Douglas Bates who wrote the `lme4` package as to why there are no reported p.values. The short version is that the degrees freedom can only be approximated and thus p.values cannot be calculated. There are a few solutions, the easiest being comparing the mixed model to one with just an intercept. This effectively determines if the fixed effect is signficant but gets unweidely the more predictor variables that are in your model.
-
-```{r}
-
-m1 <- lmer(biomass ~ cattle + (1|year), data=ranch)
-m0 <- lmer(biomass ~ 1 + (1|year), data=ranch)
-
-anova(m1,m0, test="Chisq")
-
-```
-
-The solution recommended by Bates is to use a Markov Chain Monte Carlo sample, but I find this computer intensive and some people struggle understanding the output. Instead, I take the same approach as SAS (i.e. Satterthwaite's Method) to calculate p.values in mixed models that can be replicated using the `lmerTest` package
-
-```{r warning=FALSE, message=FALSE}
-library(lmerTest)
-
-m1 <- lmer(biomass ~ cattle + (1|year), data=ranch)
-anova(m1)
-```
-
-### 2.6 Generalized Additive Models
-
-GAMs borrow all the flexibility of GLMs with the exception of being able to account for non-linearity. A person with the above knowledge could easily fit a basic GAM once they have learned the syntax in R. However, there is some degree of complexity in determining the smoothing term that is associated with the fit. Dr. Gavin Simpson has many [resources](https://www.fromthebottomoftheheap.net/2014/05/09/modelling-seasonal-data-with-gam/) and tutorials that do a great job explaining everything that is GAM. In a sense, a GAM will do almost anything you ever want because it is a GLM with no boundaries. There are two general caveats though before you consider the GAM route:
-
-1) Fitting polynomials beyond quadratic rarely make sense ecologically (but remember that rarely is not the same as never and climate data often requires more complex polynomials)
-2) Currently, there is preference for GLMs over GAMs particularly when one includes interaction terms. 
-
-![](gam.png)
-
-The main package for GAMs are `mgcv`. We can explore fitting a simple GAM model with the previous ranch data. What changes in a GAM is the presence of a smoothing term. 
-
-
-```{r warning=FALSE, message=FALSE}
-library(mgcv)
-
-head(gam.data)
-
-## Plot the data
-ggplot(gam.data, aes(x=year, y=ndvi)) + geom_point()
-
-## Run a linear model
-m1 <- lm(ndvi~year, data=gam.data)
-summary(m1)
-
-## add linear model to plot
-ggplot(gam.data, aes(x=year, y=ndvi)) + geom_point()+  geom_smooth(method = "lm", formula = y ~x)
-
-## check the fit
-par(mfrow = c(2,2))
-plot(m1)
-
-```
-
-When we plot changes in NDVI over three decades, we notice that there appears to be a non-linear trend, potentially following some form of cycle or determine by a driver that shifted twice significantly. If we were to fit a typical linear model, the response is significant. However, when we look at the diagnostic plots, there are some strongly suspicious findings. Particularly, with the residuals vs the fitted values. 
-
-Instead, we fit a GAM with year fitted to a smoothing term. You can specify the type of polynomial you want fit, but since this is more of a data exploration, I will leave that argument blank. 
-
-```{r}
-
-## Fit GAM
-m2 <- gam(ndvi~s(year), data=gam.data, method="REML")
-summary(m2)
-
-## check diagnostics
-par(mfrow = c(2,2))
-gam.check(m2)
-
-## see final plot
-ggplot(gam.data, aes(x=year, y=ndvi)) + geom_point() +  geom_smooth(method = "gam", formula = y ~s(x))
-
-```
-
-Here we can see from the diagnostic plots that the residuals more closely resemble the fitted values and that we have a relatively normal distribution in the residuals. Using `ggplot` has a feature that allows for the plotting on GAMs in addition to the others we described, such as glm and linear models. 
-
-GAMs can also fitted random effects, and they fit a form of interaction that is similar to running two nested GAMs separated by the respective factors. Careful attention must be paid to the fitting of the smoothing terms and splines. It is not okay to trust the defaults. 
-
-
-```{r}
-## Change back plot pattern
-par(mfrow = c(1,1))
-```
